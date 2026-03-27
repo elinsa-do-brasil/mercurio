@@ -167,7 +167,7 @@ export default function Home() {
                   value={form.nome}
                   onChange={(e) => updateField("nome", e.target.value)}
                   onBlur={() => touch("nome")}
-                  placeholder="Raave L. Aires"
+                  placeholder="Fulano de Tal"
                   className={touched.nome && errors.nome ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
                 {touched.nome && errors.nome && (
@@ -181,7 +181,7 @@ export default function Home() {
                   value={form.cargo}
                   onChange={(e) => updateField("cargo", e.target.value)}
                   onBlur={() => touch("cargo")}
-                  placeholder="Analista de TI"
+                  placeholder="Trabalho com isso..."
                   className={touched.cargo && errors.cargo ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
                 {touched.cargo && errors.cargo && (
