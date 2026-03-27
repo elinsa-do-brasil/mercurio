@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import html2canvas from "html2canvas-pro";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,8 +69,6 @@ const EMAIL_DOMAIN = "@grupoamperelinsa.com";
 
 export default function Home() {
   const signatureRef = useRef<HTMLDivElement>(null);
-  const applyRec = (rec: Recommendation) =>
-    setForm((prev) => ({ ...prev, [rec.field]: rec.apply() }));
 
   const [form, setForm] = useState<FormData>({
     nome: "",
@@ -81,13 +79,22 @@ export default function Home() {
 
   const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
 
-  const touch = (field: keyof FormData) =>
-    setTouched((prev) => ({ ...prev, [field]: true }));
+  const touch = useCallback(
+    (field: keyof FormData) =>
+      setTouched((prev) => ({ ...prev, [field]: true })),
+    [],
+  );
 
-  const update =
-    (field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      setForm((prev) => ({ ...prev, [field]: e.target.value }));
-    };
+  const updateField = useCallback(
+    (field: keyof FormData, value: string) =>
+      setForm((prev) => ({ ...prev, [field]: value })),
+    [],
+  );
+
+  const applyRec = useCallback(
+    (rec: Recommendation) => setForm((prev) => ({ ...prev, [rec.field]: rec.apply() })),
+    [],
+  );
 
   const errors: Partial<Record<keyof FormData, string>> = {
     ...(form.nome.trim().split(/\s+/).filter(Boolean).length < 2 && {
@@ -158,7 +165,7 @@ export default function Home() {
                 <Input
                   id="nome"
                   value={form.nome}
-                  onChange={update("nome")}
+                  onChange={(e) => updateField("nome", e.target.value)}
                   onBlur={() => touch("nome")}
                   placeholder="Raave L. Aires"
                   className={touched.nome && errors.nome ? "border-destructive focus-visible:ring-destructive" : ""}
@@ -172,7 +179,7 @@ export default function Home() {
                 <Input
                   id="cargo"
                   value={form.cargo}
-                  onChange={update("cargo")}
+                  onChange={(e) => updateField("cargo", e.target.value)}
                   onBlur={() => touch("cargo")}
                   placeholder="Analista de TI"
                   className={touched.cargo && errors.cargo ? "border-destructive focus-visible:ring-destructive" : ""}
@@ -188,8 +195,9 @@ export default function Home() {
                     id="email"
                     type="text"
                     value={form.email}
-                    onChange={update("email")}
+                    onChange={(e) => updateField("email", e.target.value)}
                     onBlur={() => touch("email")}
+                    autoComplete="off"
                     placeholder="nome.sobrenome"
                     className="flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
                   />
@@ -209,7 +217,7 @@ export default function Home() {
                 <Input
                   id="telefone"
                   value={form.telefone}
-                  onChange={update("telefone")}
+                  onChange={(e) => updateField("telefone", e.target.value)}
                   placeholder="(91) 9 0000-0000"
                 />
               </div>
