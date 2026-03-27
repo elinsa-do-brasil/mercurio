@@ -396,7 +396,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-border/50 px-6 py-3">
         <p className="text-xs text-muted-foreground text-center">
-          Feito com 💙 e código aberto na Elinsa do Brasil por Raave L. Aires
+          Feito com 😝 e código aberto na <strong>Elinsa do Brasil</strong> por <strong>Raave L. Aires</strong>
         </p>
       </footer>
     </main>
