@@ -1,65 +1,396 @@
-import Image from "next/image";
+"use client";
+
+import { useRef, useState } from "react";
+import html2canvas from "html2canvas-pro";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+
+interface FormData {
+  nome: string;
+  cargo: string;
+  email: string;
+  telefone: string;
+}
+
+interface Recommendation {
+  field: keyof FormData;
+  label: string;
+  suggestion: string;
+  apply: () => string;
+}
+
+const CONNECTORS = new Set(["de", "da", "do", "dos", "das", "e", "e"]);
+
+function abbreviateMiddleNames(nome: string): string {
+  const words = nome.trim().split(/\s+/);
+  if (words.length <= 2) return nome;
+  const result = words
+    .map((word, i) => {
+      if (i === 0 || i === words.length - 1) return word;
+      if (CONNECTORS.has(word.toLowerCase())) return null;
+      if (/^[A-Za-zÀ-ÖØ-öø-ÿ]\.$/.test(word)) return word; // already abbreviated
+      return word[0].toUpperCase() + ".";
+    })
+    .filter(Boolean);
+  return result.join(" ");
+}
+
+function getRecommendations(form: FormData): Recommendation[] {
+  const recs: Recommendation[] = [];
+
+  if (form.nome) {
+    const abbreviated = abbreviateMiddleNames(form.nome);
+    if (abbreviated !== form.nome) {
+      recs.push({
+        field: "nome",
+        label: "Abreviar nomes do meio",
+        suggestion: abbreviated,
+        apply: () => abbreviated,
+      });
+    }
+  }
+
+  if (form.cargo && !form.cargo.trimEnd().endsWith(".")) {
+    const withDot = form.cargo.trimEnd() + ".";
+    recs.push({
+      field: "cargo",
+      label: "Adicionar ponto final ao cargo",
+      suggestion: withDot,
+      apply: () => withDot,
+    });
+  }
+
+  return recs;
+}
+
+const EMAIL_DOMAIN = "@grupoamperelinsa.com";
 
 export default function Home() {
+  const signatureRef = useRef<HTMLDivElement>(null);
+  const applyRec = (rec: Recommendation) =>
+    setForm((prev) => ({ ...prev, [rec.field]: rec.apply() }));
+
+  const [form, setForm] = useState<FormData>({
+    nome: "",
+    cargo: "",
+    email: "",
+    telefone: "",
+  });
+
+  const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
+
+  const touch = (field: keyof FormData) =>
+    setTouched((prev) => ({ ...prev, [field]: true }));
+
+  const update =
+    (field: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    };
+
+  const errors: Partial<Record<keyof FormData, string>> = {
+    ...(form.nome.trim().split(/\s+/).filter(Boolean).length < 2 && {
+      nome: "Informe nome e sobrenome.",
+    }),
+    ...(form.cargo.trim().length === 0 && { cargo: "Cargo é obrigatório." }),
+    ...(!/^[^\s@]+$/.test(form.email.trim()) && {
+      email: "Informe um username válido (sem espaços ou @).",
+    }),
+  };
+
+  const isValid = Object.keys(errors).length === 0;
+
+  const exportPng = async () => {
+    if (!signatureRef.current) return;
+
+    const raw = await html2canvas(signatureRef.current, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true,
+    });
+
+    const radius = 16; // px at 2x scale
+    const rounded = document.createElement("canvas");
+    rounded.width = raw.width;
+    rounded.height = raw.height;
+    const ctx = rounded.getContext("2d")!;
+    ctx.beginPath();
+    ctx.roundRect(0, 0, raw.width, raw.height, radius);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(raw, 0, 0);
+
+    const link = document.createElement("a");
+    link.download = `assinatura-${form.nome.toLowerCase().replace(/\s+/g, "-")}.png`;
+    link.href = rounded.toDataURL("image/png");
+    link.click();
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="flex-1 flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border/50 px-6 py-5">
+        <div className="max-w-7xl mx-auto flex items-center gap-3">
+          <div className="h-8 w-1 rounded-full bg-elinsa" />
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              Gerador de assinatura
+            </h1>
+            <p className="text-sm text-muted-foreground">Elinsa do Brasil</p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      {/* Content */}
+      <div className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+          {/* Form */}
+          <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-base font-medium">
+                Dados da assinatura
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="nome">Nome completo</Label>
+                <Input
+                  id="nome"
+                  value={form.nome}
+                  onChange={update("nome")}
+                  onBlur={() => touch("nome")}
+                  placeholder="Raave L. Aires"
+                  className={touched.nome && errors.nome ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {touched.nome && errors.nome && (
+                  <p className="text-xs text-destructive">{errors.nome}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cargo">Cargo</Label>
+                <Input
+                  id="cargo"
+                  value={form.cargo}
+                  onChange={update("cargo")}
+                  onBlur={() => touch("cargo")}
+                  placeholder="Analista de TI"
+                  className={touched.cargo && errors.cargo ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {touched.cargo && errors.cargo && (
+                  <p className="text-xs text-destructive">{errors.cargo}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail</Label>
+                <div className={`flex items-center rounded-md border bg-transparent focus-within:ring-1 overflow-hidden ${touched.email && errors.email ? "border-destructive focus-within:ring-destructive" : "border-input focus-within:ring-ring"}`}>
+                  <input
+                    id="email"
+                    type="text"
+                    value={form.email}
+                    onChange={update("email")}
+                    onBlur={() => touch("email")}
+                    placeholder="nome.sobrenome"
+                    className="flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
+                  />
+                  <span className="px-3 py-2 text-sm text-muted-foreground bg-muted/40 border-l border-input select-none whitespace-nowrap">
+                    {EMAIL_DOMAIN}
+                  </span>
+                </div>
+                {touched.email && errors.email && (
+                  <p className="text-xs text-destructive">{errors.email}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="telefone">
+                  Telefone{" "}
+                  <span className="text-muted-foreground font-normal">(opcional)</span>
+                </Label>
+                <Input
+                  id="telefone"
+                  value={form.telefone}
+                  onChange={update("telefone")}
+                  placeholder="(91) 9 0000-0000"
+                />
+              </div>
+
+              <Button
+                onClick={exportPng}
+                disabled={!isValid}
+                className="w-full mt-2 bg-elinsa hover:bg-elinsa-dim text-white font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Baixar como PNG
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Preview */}
+          <div className="lg:sticky lg:top-8 space-y-4">
+            <p className="text-sm font-medium text-muted-foreground">
+              Preview da assinatura
+            </p>
+
+            <div className="rounded-lg border border-border/50 bg-white overflow-x-auto w-fit">
+              {/* Signature — exported as PNG */}
+              <div
+                ref={signatureRef}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "20px",
+                  padding: "28px 32px",
+                  fontFamily: "'Geist', 'Segoe UI', Arial, sans-serif",
+                  backgroundColor: "#ffffff",
+                  width: "fit-content",
+                  maxWidth: "600px",
+                  overflow: "hidden",
+                  borderRadius: "8px",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- html2canvas requires native <img> */}
+                <img
+                  src="/Logo.png"
+                  alt="Elinsa do Brasil"
+                  style={{ height: "80px", objectFit: "contain" }}
+                  crossOrigin="anonymous"
+                />
+
+                {/* Divider */}
+                <div
+                  style={{
+                    width: "1px",
+                    alignSelf: "stretch",
+                    backgroundColor: "black",
+                    borderRadius: "1px",
+                    flexShrink: 0,
+                  }}
+                />
+
+                {/* Info */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px",
+                    overflow: "hidden",
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "18px",
+                      fontWeight: 700,
+                      color: "#111111",
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {form.nome || "Nome completo"}
+                    {form.nome ? "," : ""}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      color: "#333333",
+                      lineHeight: 1.4,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {form.cargo || "Cargo"}
+                  </span>
+                  <div style={{ height: "6px" }} />
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "#333333",
+                      lineHeight: 1.5,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {form.email
+                      ? form.email + EMAIL_DOMAIN
+                      : "alguem@grupoamperelinsa.com"}
+                  </span>
+                  {form.telefone && (
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "#333333",
+                        lineHeight: 1.5,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {form.telefone}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Recommendations */}
+            {(() => {
+              const recs = getRecommendations(form);
+              return (
+                <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Recomendações
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {recs.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma recomendação no momento.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {recs.map((rec, i) => (
+                          <div
+                            key={i}
+                            className="flex items-start justify-between gap-4"
+                          >
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="text-sm font-medium">{rec.label}</p>
+                              <p className="text-xs text-muted-foreground font-mono truncate">
+                                {rec.suggestion}
+                              </p>
+                            </div>
+                            {rec.apply() !== form[rec.field] && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="shrink-0 text-xs h-7 cursor-pointer"
+                                onClick={() => applyRec(rec)}
+                              >
+                                Aplicar
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+          </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="border-t border-border/50 px-6 py-3">
+        <p className="text-xs text-muted-foreground text-center">
+          Feito com 💙 e código aberto na Elinsa do Brasil por Raave L. Aires
+        </p>
+      </footer>
+    </main>
   );
 }
