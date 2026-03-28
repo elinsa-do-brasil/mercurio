@@ -86,8 +86,20 @@ export default function Home() {
   );
 
   const updateField = useCallback(
-    (field: keyof FormData, value: string) =>
-      setForm((prev) => ({ ...prev, [field]: value })),
+    (field: keyof FormData, value: string) => {
+      if (field === "telefone") {
+        const digits = value.replace(/\D/g, "").slice(0, 11);
+        let masked = "";
+        if (digits.length > 0) masked += "(" + digits.slice(0, 2);
+        if (digits.length >= 2) masked += ") ";
+        if (digits.length > 2) masked += digits.slice(2, 3);
+        if (digits.length > 3) masked += " " + digits.slice(3, 7);
+        if (digits.length > 7) masked += "-" + digits.slice(7, 11);
+        setForm((prev) => ({ ...prev, telefone: masked }));
+      } else {
+        setForm((prev) => ({ ...prev, [field]: value }));
+      }
+    },
     [],
   );
 
@@ -104,6 +116,10 @@ export default function Home() {
     ...(!/^[^\s@]+$/.test(form.email.trim()) && {
       email: "Informe um username válido (sem espaços ou @).",
     }),
+    ...(form.telefone &&
+      !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(form.telefone) && {
+        telefone: "Formato esperado: (00) 9 0000-0000",
+      }),
   };
 
   const isValid = Object.keys(errors).length === 0;
@@ -218,8 +234,13 @@ export default function Home() {
                   id="telefone"
                   value={form.telefone}
                   onChange={(e) => updateField("telefone", e.target.value)}
+                  onBlur={() => touch("telefone")}
                   placeholder="(91) 9 0000-0000"
+                  className={touched.telefone && errors.telefone ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
+                {touched.telefone && errors.telefone && (
+                  <p className="text-xs text-destructive">{errors.telefone}</p>
+                )}
               </div>
 
               <Button
