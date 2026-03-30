@@ -22,10 +22,9 @@ interface Recommendation {
   field: keyof FormData;
   label: string;
   suggestion: string;
-  apply: () => string;
 }
 
-const CONNECTORS = new Set(["de", "da", "do", "dos", "das", "e", "e"]);
+const CONNECTORS = new Set(["de", "da", "do", "dos", "das", "e"]);
 
 function abbreviateMiddleNames(nome: string): string {
   const words = nome.trim().split(/\s+/);
@@ -41,17 +40,16 @@ function abbreviateMiddleNames(nome: string): string {
   return result.join(" ");
 }
 
-function getRecommendations(form: FormData): Recommendation[] {
+function getRecommendations(nome: string): Recommendation[] {
   const recs: Recommendation[] = [];
 
-  if (form.nome) {
-    const abbreviated = abbreviateMiddleNames(form.nome);
-    if (abbreviated !== form.nome) {
+  if (nome) {
+    const abbreviated = abbreviateMiddleNames(nome);
+    if (abbreviated !== nome) {
       recs.push({
         field: "nome",
         label: "Abreviar nomes do meio",
         suggestion: abbreviated,
-        apply: () => abbreviated,
       });
     }
   }
@@ -83,7 +81,25 @@ function formatPhone(ddi: string, telefone: string): string {
   return `${ddi} ${telefone}`;
 }
 
+function validatePhone(ddi: string, telefone: string): string | null {
+  if (!telefone) return null;
+  if (ddi === "+55" && !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(telefone))
+    return "Formato esperado: (00) 9 0000-0000";
+  if (ddi === "+34" && !/^\d{3} \d{3} \d{3}$/.test(telefone))
+    return "Formato esperado: 000 000 000";
+  return null;
+}
+
 const EMAIL_DOMAIN = "@grupoamperelinsa.com";
+
+const CARD_TEXT_STYLE: React.CSSProperties = {
+  fontSize: "13px",
+  color: "#333333",
+  lineHeight: 1.5,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
 
 export default function Home() {
   const signatureRef = useRef<HTMLDivElement>(null);
@@ -123,7 +139,7 @@ export default function Home() {
   );
 
   const applyRec = useCallback(
-    (rec: Recommendation) => setForm((prev) => ({ ...prev, [rec.field]: rec.apply() })),
+    (rec: Recommendation) => setForm((prev) => ({ ...prev, [rec.field]: rec.suggestion })),
     [],
   );
 
@@ -135,21 +151,17 @@ export default function Home() {
     ...(!/^[^\s@]+$/.test(form.email.trim()) && {
       email: "Informe um username válido (sem espaços ou @).",
     }),
-    ...(form.telefone &&
-      ((form.ddi === "+55" && !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(form.telefone)) ||
-       (form.ddi === "+34" && !/^\d{3} \d{3} \d{3}$/.test(form.telefone))) && {
-        telefone: form.ddi === "+55" ? "Formato esperado: (00) 9 0000-0000" : "Formato esperado: 000 000 000",
-      }),
-    ...(form.telefone2 &&
-      ((form.ddi2 === "+55" && !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(form.telefone2)) ||
-       (form.ddi2 === "+34" && !/^\d{3} \d{3} \d{3}$/.test(form.telefone2))) && {
-        telefone2: form.ddi2 === "+55" ? "Formato esperado: (00) 9 0000-0000" : "Formato esperado: 000 000 000",
-      }),
+    ...(validatePhone(form.ddi, form.telefone) && {
+      telefone: validatePhone(form.ddi, form.telefone)!,
+    }),
+    ...(validatePhone(form.ddi2, form.telefone2) && {
+      telefone2: validatePhone(form.ddi2, form.telefone2)!,
+    }),
   };
 
   const isValid = Object.keys(errors).length === 0;
 
-  const recs = useMemo(() => getRecommendations(form), [form]);
+  const recs = useMemo(() => getRecommendations(form.nome), [form.nome]);
 
   const exportPng = async () => {
     if (!signatureRef.current) return;
@@ -416,44 +428,17 @@ export default function Home() {
                   >
                     {form.cargo || "Cargo"}
                   </span>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      color: "#333333",
-                      lineHeight: 1.4,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
+                  <span style={{ ...CARD_TEXT_STYLE, lineHeight: 1.4 }}>
                     Elinsa do Brasil{form.local ? ` | ${form.local}` : ""}
                   </span>
                   <div style={{ height: "6px" }} />
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      color: "#333333",
-                      lineHeight: 1.5,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
+                  <span style={CARD_TEXT_STYLE}>
                     {form.email
                       ? form.email + EMAIL_DOMAIN
                       : "alguem@grupoamperelinsa.com"}
                   </span>
                   {(form.telefone || form.telefone2) && (
-                    <span
-                      style={{
-                        fontSize: "13px",
-                        color: "#333333",
-                        lineHeight: 1.5,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
+                    <span style={CARD_TEXT_STYLE}>
                       {[
                         form.telefone && formatPhone(form.ddi, form.telefone),
                         form.telefone2 && formatPhone(form.ddi2, form.telefone2),
