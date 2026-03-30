@@ -245,7 +245,7 @@ export default function Home() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">E-mail</Label>
-                <div className={`flex items-center rounded-md border bg-transparent focus-within:ring-1 overflow-hidden ${touched.email && errors.email ? "border-destructive focus-within:ring-destructive" : "border-input focus-within:ring-ring"}`}>
+                <div className="flex items-center rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring overflow-hidden">
                   <input
                     id="email"
                     type="text"
@@ -253,6 +253,7 @@ export default function Home() {
                     onChange={(e) => updateField("email", e.target.value)}
                     onBlur={() => touch("email")}
                     autoComplete="off"
+                    aria-invalid={!!(touched.email && errors.email)}
                     placeholder="nome.sobrenome"
                     className="flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
                   />
