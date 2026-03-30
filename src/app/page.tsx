@@ -1,60 +1,104 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
+import { useForm, useWatch, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import html2canvas from "html2canvas-pro";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Field,
+  FieldLabel,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+} from "@/components/ui/field";
 
-interface FormData {
-  nome: string;
-  cargo: string;
-  local: string;
-  ddi: string;
-  telefone: string;
-  ddi2: string;
-  telefone2: string;
-  email: string;
-}
+// ---------------------------------------------------------------------------
+// Schema
+// ---------------------------------------------------------------------------
 
-interface Recommendation {
-  field: keyof FormData;
-  label: string;
-  suggestion: string;
-}
+const DDI_VALUES = ["+55", "+34"] as const;
+
+const phoneSchema = z.object({
+  ddi: z.enum(DDI_VALUES),
+  numero: z.string(),
+});
+
+const formSchema = z.object({
+  nome: z
+    .string()
+    .refine((v) => v.trim().split(/\s+/).filter(Boolean).length >= 2, {
+      message: "Informe nome e sobrenome.",
+    }),
+  cargo: z.string().min(1, "Cargo é obrigatório."),
+  local: z.string().optional().default(""),
+  telefone: phoneSchema
+    .refine(
+      ({ ddi, numero }) => {
+        if (!numero) return true;
+        if (ddi === "+55") return /^\(\d{2}\) \d \d{4}-\d{4}$/.test(numero);
+        if (ddi === "+34") return /^\d{3} \d{3} \d{3}$/.test(numero);
+        return true;
+      },
+      {
+        message: "Número incompleto.",
+      },
+    )
+    .default({ ddi: "+55", numero: "" }),
+  telefone2: phoneSchema
+    .refine(
+      ({ ddi, numero }) => {
+        if (!numero) return true;
+        if (ddi === "+55") return /^\(\d{2}\) \d \d{4}-\d{4}$/.test(numero);
+        if (ddi === "+34") return /^\d{3} \d{3} \d{3}$/.test(numero);
+        return true;
+      },
+      {
+        message: "Número incompleto.",
+      },
+    )
+    .default({ ddi: "+55", numero: "" }),
+  email: z
+    .string()
+    .regex(/^[^\s@]+$/, "Informe um username válido (sem espaços ou @)."),
+});
+
+type FormValues = z.input<typeof formSchema>;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const CONNECTORS = new Set(["de", "da", "do", "dos", "das", "e"]);
 
 function abbreviateMiddleNames(nome: string): string {
   const words = nome.trim().split(/\s+/);
   if (words.length <= 2) return nome;
-  const result = words
+  return words
     .map((word, i) => {
       if (i === 0 || i === words.length - 1) return word;
       if (CONNECTORS.has(word.toLowerCase())) return null;
-      if (/^[A-Za-zÀ-ÖØ-öø-ÿ]\.$/.test(word)) return word; // already abbreviated
+      if (/^[A-Za-zÀ-ÖØ-öø-ÿ]\.$/.test(word)) return word;
       return word[0].toUpperCase() + ".";
     })
-    .filter(Boolean);
-  return result.join(" ");
+    .filter(Boolean)
+    .join(" ");
+}
+
+interface Recommendation {
+  field: keyof FormValues;
+  label: string;
+  suggestion: string;
 }
 
 function getRecommendations(nome: string): Recommendation[] {
-  const recs: Recommendation[] = [];
-
-  if (nome) {
-    const abbreviated = abbreviateMiddleNames(nome);
-    if (abbreviated !== nome) {
-      recs.push({
-        field: "nome",
-        label: "Abreviar nomes do meio",
-        suggestion: abbreviated,
-      });
-    }
-  }
-
-  return recs;
+  if (!nome) return [];
+  const abbreviated = abbreviateMiddleNames(nome);
+  if (abbreviated === nome) return [];
+  return [{ field: "nome", label: "Abreviar nomes do meio", suggestion: abbreviated }];
 }
 
 function maskBR(value: string): string {
@@ -75,17 +119,12 @@ function maskES(value: string): string {
   return masked;
 }
 
-function formatPhone(ddi: string, telefone: string): string {
-  return `${ddi} ${telefone}`;
+function applyMask(ddi: string, value: string): string {
+  return ddi === "+55" ? maskBR(value) : maskES(value);
 }
 
-function validatePhone(ddi: string, telefone: string): string | null {
-  if (!telefone) return null;
-  if (ddi === "+55" && !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(telefone))
-    return "Formato esperado: (00) 9 0000-0000";
-  if (ddi === "+34" && !/^\d{3} \d{3} \d{3}$/.test(telefone))
-    return "Formato esperado: 000 000 000";
-  return null;
+function formatPhone(ddi: string, numero: string): string {
+  return `${ddi} ${numero}`;
 }
 
 const EMAIL_DOMAIN = "@grupoamperelinsa.com";
@@ -95,71 +134,131 @@ const CARD_TEXT_STYLE: React.CSSProperties = {
   color: "#333333",
   lineHeight: 1.5,
   whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
 };
+
+// ---------------------------------------------------------------------------
+// Phone field component
+// ---------------------------------------------------------------------------
+
+function PhoneField({
+  id,
+  label,
+  control,
+  name,
+}: {
+  id: string;
+  label: string;
+  control: ReturnType<typeof useForm<FormValues>>["control"];
+  name: "telefone" | "telefone2";
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => {
+        const ddi = field.value?.ddi ?? "+55";
+        const numero = field.value?.numero ?? "";
+        return (
+          <Field data-invalid={!!fieldState.error}>
+            <FieldLabel htmlFor={id}>
+              {label}{" "}
+              <span className="text-muted-foreground font-normal">(opcional)</span>
+            </FieldLabel>
+            <div className="flex gap-2">
+              <select
+                value={ddi}
+                onChange={(e) => {
+                  field.onChange({ ddi: e.target.value, numero: "" });
+                }}
+                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="+55">🇧🇷 +55</option>
+                <option value="+34">🇪🇸 +34</option>
+              </select>
+              <Input
+                id={id}
+                value={numero}
+                onChange={(e) => {
+                  const masked = applyMask(ddi, e.target.value);
+                  field.onChange({ ddi, numero: masked });
+                }}
+                onBlur={field.onBlur}
+                placeholder={ddi === "+55" ? "(91) 9 0000-0000" : "000 000 000"}
+                className={`flex-1 ${fieldState.error ? "border-destructive focus-visible:ring-destructive" : ""}`}
+              />
+            </div>
+            <FieldError>{fieldState.error?.message}</FieldError>
+          </Field>
+        );
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Email field component
+// ---------------------------------------------------------------------------
+
+function EmailField({
+  control,
+}: {
+  control: ReturnType<typeof useForm<FormValues>>["control"];
+}) {
+  return (
+    <Controller
+      control={control}
+      name="email"
+      render={({ field, fieldState }) => (
+        <Field data-invalid={!!fieldState.error}>
+          <FieldLabel htmlFor="email">E-mail</FieldLabel>
+          <div className="flex items-center gap-0">
+            <Input
+              id="email"
+              {...field}
+              autoComplete="off"
+              placeholder="nome.sobrenome"
+              className={`flex-1 rounded-r-none border-r-0 ${fieldState.error ? "border-destructive focus-visible:ring-destructive" : ""}`}
+            />
+            <span className="h-8 inline-flex items-center rounded-r-lg border border-l-0 border-input bg-muted/40 px-2.5 text-sm text-muted-foreground select-none whitespace-nowrap">
+              {EMAIL_DOMAIN}
+            </span>
+          </div>
+          <FieldError>{fieldState.error?.message}</FieldError>
+        </Field>
+      )}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function Home() {
   const signatureRef = useRef<HTMLDivElement>(null);
 
-  const [form, setForm] = useState<FormData>({
-    nome: "",
-    cargo: "",
-    local: "",
-    ddi: "+55",
-    telefone: "",
-    ddi2: "+55",
-    telefone2: "",
-    email: "",
+  const {
+    register,
+    control,
+    setValue,
+    formState: { isValid },
+  } = useForm<FormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(formSchema as any),
+    mode: "onTouched",
+    defaultValues: {
+      nome: "",
+      cargo: "",
+      local: "",
+      telefone: { ddi: "+55", numero: "" },
+      telefone2: { ddi: "+55", numero: "" },
+      email: "",
+    },
   });
 
-  const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
+  const form = useWatch({ control });
 
-  const touch = useCallback(
-    (field: keyof FormData) =>
-      setTouched((prev) => ({ ...prev, [field]: true })),
-    [],
-  );
-
-  const updateField = useCallback(
-    (field: keyof FormData, value: string) => {
-      if (field === "telefone" || field === "telefone2") {
-        setForm((prev) => {
-          const ddi = field === "telefone" ? prev.ddi : prev.ddi2;
-          const masked = ddi === "+55" ? maskBR(value) : maskES(value);
-          return { ...prev, [field]: masked };
-        });
-      } else {
-        setForm((prev) => ({ ...prev, [field]: value }));
-      }
-    },
-    [],
-  );
-
-  const applyRec = useCallback(
-    (rec: Recommendation) => setForm((prev) => ({ ...prev, [rec.field]: rec.suggestion })),
-    [],
-  );
-
-  const errors: Partial<Record<keyof FormData, string>> = {
-    ...(form.nome.trim().split(/\s+/).filter(Boolean).length < 2 && {
-      nome: "Informe nome e sobrenome.",
-    }),
-    ...(form.cargo.trim().length === 0 && { cargo: "Cargo é obrigatório." }),
-    ...(!/^[^\s@]+$/.test(form.email.trim()) && {
-      email: "Informe um username válido (sem espaços ou @).",
-    }),
-    ...(validatePhone(form.ddi, form.telefone) && {
-      telefone: validatePhone(form.ddi, form.telefone)!,
-    }),
-    ...(validatePhone(form.ddi2, form.telefone2) && {
-      telefone2: validatePhone(form.ddi2, form.telefone2)!,
-    }),
-  };
-
-  const isValid = Object.keys(errors).length === 0;
-
-  const recs = useMemo(() => getRecommendations(form.nome), [form.nome]);
+  const recs = useMemo(() => getRecommendations(form.nome ?? ""), [form.nome]);
 
   const exportPng = async () => {
     if (!signatureRef.current) return;
@@ -170,7 +269,7 @@ export default function Home() {
       useCORS: true,
     });
 
-    const radius = 16; // px at 2x scale
+    const radius = 16;
     const rounded = document.createElement("canvas");
     rounded.width = raw.width;
     rounded.height = raw.height;
@@ -182,10 +281,15 @@ export default function Home() {
     ctx.drawImage(raw, 0, 0);
 
     const link = document.createElement("a");
-    link.download = `assinatura-${form.nome.toLowerCase().replace(/\s+/g, "-")}.png`;
+    link.download = `assinatura-${(form.nome ?? "").toLowerCase().replace(/\s+/g, "-")}.png`;
     link.href = rounded.toDataURL("image/png");
     link.click();
   };
+
+  const tel1 = form.telefone?.numero ?? "";
+  const tel2 = form.telefone2?.numero ?? "";
+  const ddi1 = form.telefone?.ddi ?? "+55";
+  const ddi2 = form.telefone2?.ddi ?? "+55";
 
   return (
     <main className="flex-1 flex flex-col">
@@ -212,141 +316,91 @@ export default function Home() {
                 Dados da assinatura
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome completo</Label>
-                <Input
-                  id="nome"
-                  value={form.nome}
-                  onChange={(e) => updateField("nome", e.target.value)}
-                  onBlur={() => touch("nome")}
-                  placeholder="Fulano de Tal"
-                  className={touched.nome && errors.nome ? "border-destructive focus-visible:ring-destructive" : ""}
+            <CardContent>
+              <FieldGroup>
+                {/* Nome */}
+                <Controller
+                  control={control}
+                  name="nome"
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={!!fieldState.error}>
+                      <FieldLabel htmlFor="nome">Nome completo</FieldLabel>
+                      <Input
+                        id="nome"
+                        {...field}
+                        placeholder="Fulano de Tal"
+                        className={fieldState.error ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      <FieldError>{fieldState.error?.message}</FieldError>
+                    </Field>
+                  )}
                 />
-                {touched.nome && errors.nome && (
-                  <p className="text-xs text-destructive">{errors.nome}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cargo">Cargo</Label>
-                <Input
-                  id="cargo"
-                  value={form.cargo}
-                  onChange={(e) => updateField("cargo", e.target.value)}
-                  onBlur={() => touch("cargo")}
-                  placeholder="Trabalho com isso..."
-                  className={touched.cargo && errors.cargo ? "border-destructive focus-visible:ring-destructive" : ""}
-                />
-                {touched.cargo && errors.cargo && (
-                  <p className="text-xs text-destructive">{errors.cargo}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <div className="flex items-center rounded-md border border-input bg-transparent focus-within:ring-1 focus-within:ring-ring overflow-hidden">
-                  <input
-                    id="email"
-                    type="text"
-                    value={form.email}
-                    onChange={(e) => updateField("email", e.target.value)}
-                    onBlur={() => touch("email")}
-                    autoComplete="off"
-                    aria-invalid={!!(touched.email && errors.email)}
-                    placeholder="nome.sobrenome"
-                    className="flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none placeholder:text-muted-foreground"
-                  />
-                  <span className="px-3 py-2 text-sm text-muted-foreground bg-muted/40 border-l border-input select-none whitespace-nowrap">
-                    {EMAIL_DOMAIN}
-                  </span>
-                </div>
-                {touched.email && errors.email && (
-                  <p className="text-xs text-destructive">{errors.email}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="local">
-                  Local de atuação{" "}
-                  <span className="text-muted-foreground font-normal">(opcional)</span>
-                </Label>
-                <Input
-                  id="local"
-                  value={form.local}
-                  onChange={(e) => updateField("local", e.target.value)}
-                  onBlur={() => touch("local")}
-                  placeholder="Base Paragominas, Regional Centro-Oeste..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Informe o seu local de atuação (ex: Base Paragominas; Base Santarém; Regional Centro-Oeste; Regional Nordeste...) ou deixe em branco caso seu cargo seja de atuação geral na empresa (ex: Diretor; Gerente; Conselheiro; Consultor...).
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="telefone">
-                  Telefone{" "}
-                  <span className="text-muted-foreground font-normal">(opcional)</span>
-                </Label>
-                <div className="flex gap-2">
-                  <select
-                    value={form.ddi}
-                    onChange={(e) => {
-                      const newDdi = e.target.value;
-                      setForm((prev) => ({ ...prev, ddi: newDdi, telefone: "" }));
-                    }}
-                    className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  >
-                    <option value="+55">🇧🇷 +55</option>
-                    <option value="+34">🇪🇸 +34</option>
-                  </select>
-                  <Input
-                    id="telefone"
-                    value={form.telefone}
-                    onChange={(e) => updateField("telefone", e.target.value)}
-                    onBlur={() => touch("telefone")}
-                    placeholder={form.ddi === "+55" ? "(91) 9 0000-0000" : "000 000 000"}
-                    className={`flex-1 ${touched.telefone && errors.telefone ? "border-destructive focus-visible:ring-destructive" : ""}`}
-                  />
-                </div>
-                {touched.telefone && errors.telefone && (
-                  <p className="text-xs text-destructive">{errors.telefone}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="telefone2">
-                  Segundo telefone{" "}
-                  <span className="text-muted-foreground font-normal">(opcional)</span>
-                </Label>
-                <div className="flex gap-2">
-                  <select
-                    value={form.ddi2}
-                    onChange={(e) => {
-                      const newDdi = e.target.value;
-                      setForm((prev) => ({ ...prev, ddi2: newDdi, telefone2: "" }));
-                    }}
-                    className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  >
-                    <option value="+55">🇧🇷 +55</option>
-                    <option value="+34">🇪🇸 +34</option>
-                  </select>
-                  <Input
-                    id="telefone2"
-                    value={form.telefone2}
-                    onChange={(e) => updateField("telefone2", e.target.value)}
-                    onBlur={() => touch("telefone2")}
-                    placeholder={form.ddi2 === "+55" ? "(91) 9 0000-0000" : "000 000 000"}
-                    className={`flex-1 ${touched.telefone2 && errors.telefone2 ? "border-destructive focus-visible:ring-destructive" : ""}`}
-                  />
-                </div>
-                {touched.telefone2 && errors.telefone2 && (
-                  <p className="text-xs text-destructive">{errors.telefone2}</p>
-                )}
-              </div>
 
-              <Button
-                onClick={exportPng}
-                disabled={!isValid}
-                className="w-full mt-2 bg-elinsa hover:bg-elinsa-dim text-white font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Baixar como PNG
-              </Button>
+                {/* Cargo */}
+                <Controller
+                  control={control}
+                  name="cargo"
+                  render={({ field, fieldState }) => (
+                    <Field data-invalid={!!fieldState.error}>
+                      <FieldLabel htmlFor="cargo">Cargo</FieldLabel>
+                      <Input
+                        id="cargo"
+                        {...field}
+                        placeholder="Trabalho com isso..."
+                        className={fieldState.error ? "border-destructive focus-visible:ring-destructive" : ""}
+                      />
+                      <FieldError>{fieldState.error?.message}</FieldError>
+                    </Field>
+                  )}
+                />
+
+                {/* E-mail */}
+                <EmailField control={control} />
+
+                {/* Local */}
+                <Field>
+                  <FieldLabel htmlFor="local">
+                    Local de atuação{" "}
+                    <span className="text-muted-foreground font-normal">(opcional)</span>
+                  </FieldLabel>
+                  <Input
+                    id="local"
+                    {...register("local")}
+                    placeholder="Base Paragominas, Regional Centro-Oeste..."
+                  />
+                  <FieldDescription>
+                    Informe o seu local de atuação (ex: Base Paragominas; Base
+                    Santarém; Regional Centro-Oeste; Regional Nordeste...) ou
+                    deixe em branco caso seu cargo seja de atuação geral na
+                    empresa (ex: Diretor; Gerente; Conselheiro; Consultor...).
+                  </FieldDescription>
+                </Field>
+
+                {/* Telefone 1 */}
+                <PhoneField
+                  id="telefone"
+                  label="Telefone"
+                  control={control}
+                  name="telefone"
+                />
+
+                {/* Telefone 2 */}
+                <PhoneField
+                  id="telefone2"
+                  label="Segundo telefone"
+                  control={control}
+                  name="telefone2"
+                />
+
+                <Button
+                  type="button"
+                  onClick={exportPng}
+                  disabled={!isValid}
+                  className="w-full mt-2 bg-elinsa hover:bg-elinsa-dim text-white font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Baixar como PNG
+                </Button>
+              </FieldGroup>
             </CardContent>
           </Card>
 
@@ -368,7 +422,7 @@ export default function Home() {
                   fontFamily: "'Geist', 'Segoe UI', Arial, sans-serif",
                   backgroundColor: "#ffffff",
                   width: "fit-content",
-                  maxWidth: "600px",
+                  maxWidth: "700px",
                   overflow: "hidden",
                   borderRadius: "8px",
                 }}
@@ -431,12 +485,14 @@ export default function Home() {
                     Elinsa do Brasil{form.local ? ` | ${form.local}` : ""}
                   </span>
                   <div style={{ height: "6px" }} />
-                  {(form.telefone || form.telefone2) && (
+                  {(tel1 || tel2) && (
                     <span style={CARD_TEXT_STYLE}>
                       {[
-                        form.telefone && formatPhone(form.ddi, form.telefone),
-                        form.telefone2 && formatPhone(form.ddi2, form.telefone2),
-                      ].filter(Boolean).join(" | ")}
+                        tel1 && formatPhone(ddi1, tel1),
+                        tel2 && formatPhone(ddi2, tel2),
+                      ]
+                        .filter(Boolean)
+                        .join(" | ")}
                     </span>
                   )}
                   <span style={CARD_TEXT_STYLE}>
@@ -478,7 +534,11 @@ export default function Home() {
                             size="sm"
                             variant="outline"
                             className="shrink-0 text-xs h-7 cursor-pointer"
-                            onClick={() => applyRec(rec)}
+                            onClick={() =>
+                              setValue(rec.field, rec.suggestion, {
+                                shouldValidate: true,
+                              })
+                            }
                           >
                             Aplicar
                           </Button>
@@ -496,7 +556,8 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-border/50 px-6 py-3">
         <p className="text-xs text-muted-foreground text-center">
-          Feito com 😝 e código aberto na <strong>Elinsa do Brasil</strong> por <strong>Raave L. Aires</strong>
+          Feito com 😝 e código aberto na <strong>Elinsa do Brasil</strong> por{" "}
+          <strong>Raave L. Aires</strong>
         </p>
       </footer>
     </main>
