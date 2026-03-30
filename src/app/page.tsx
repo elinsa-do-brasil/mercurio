@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import html2canvas from "html2canvas-pro";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,8 +10,12 @@ import { Button } from "@/components/ui/button";
 interface FormData {
   nome: string;
   cargo: string;
-  email: string;
+  local: string;
+  ddi: string;
   telefone: string;
+  ddi2: string;
+  telefone2: string;
+  email: string;
 }
 
 interface Recommendation {
@@ -52,17 +56,31 @@ function getRecommendations(form: FormData): Recommendation[] {
     }
   }
 
-  if (form.cargo && !form.cargo.trimEnd().endsWith(".")) {
-    const withDot = form.cargo.trimEnd() + ".";
-    recs.push({
-      field: "cargo",
-      label: "Adicionar ponto final ao cargo",
-      suggestion: withDot,
-      apply: () => withDot,
-    });
-  }
-
   return recs;
+}
+
+function maskBR(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  let masked = "";
+  if (digits.length > 0) masked += "(" + digits.slice(0, 2);
+  if (digits.length >= 2) masked += ") ";
+  if (digits.length > 2) masked += digits.slice(2, 3);
+  if (digits.length > 3) masked += " " + digits.slice(3, 7);
+  if (digits.length > 7) masked += "-" + digits.slice(7, 11);
+  return masked;
+}
+
+function maskES(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 9);
+  let masked = "";
+  if (digits.length > 0) masked += digits.slice(0, 3);
+  if (digits.length > 3) masked += " " + digits.slice(3, 6);
+  if (digits.length > 6) masked += " " + digits.slice(6, 9);
+  return masked;
+}
+
+function formatPhone(ddi: string, telefone: string): string {
+  return `${ddi} ${telefone}`;
 }
 
 const EMAIL_DOMAIN = "@grupoamperelinsa.com";
@@ -73,8 +91,12 @@ export default function Home() {
   const [form, setForm] = useState<FormData>({
     nome: "",
     cargo: "",
-    email: "",
+    local: "",
+    ddi: "+55",
     telefone: "",
+    ddi2: "+55",
+    telefone2: "",
+    email: "",
   });
 
   const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
@@ -87,15 +109,12 @@ export default function Home() {
 
   const updateField = useCallback(
     (field: keyof FormData, value: string) => {
-      if (field === "telefone") {
-        const digits = value.replace(/\D/g, "").slice(0, 11);
-        let masked = "";
-        if (digits.length > 0) masked += "(" + digits.slice(0, 2);
-        if (digits.length >= 2) masked += ") ";
-        if (digits.length > 2) masked += digits.slice(2, 3);
-        if (digits.length > 3) masked += " " + digits.slice(3, 7);
-        if (digits.length > 7) masked += "-" + digits.slice(7, 11);
-        setForm((prev) => ({ ...prev, telefone: masked }));
+      if (field === "telefone" || field === "telefone2") {
+        setForm((prev) => {
+          const ddi = field === "telefone" ? prev.ddi : prev.ddi2;
+          const masked = ddi === "+55" ? maskBR(value) : maskES(value);
+          return { ...prev, [field]: masked };
+        });
       } else {
         setForm((prev) => ({ ...prev, [field]: value }));
       }
@@ -117,12 +136,20 @@ export default function Home() {
       email: "Informe um username válido (sem espaços ou @).",
     }),
     ...(form.telefone &&
-      !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(form.telefone) && {
-        telefone: "Formato esperado: (00) 9 0000-0000",
+      ((form.ddi === "+55" && !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(form.telefone)) ||
+       (form.ddi === "+34" && !/^\d{3} \d{3} \d{3}$/.test(form.telefone))) && {
+        telefone: form.ddi === "+55" ? "Formato esperado: (00) 9 0000-0000" : "Formato esperado: 000 000 000",
+      }),
+    ...(form.telefone2 &&
+      ((form.ddi2 === "+55" && !/^\(\d{2}\) \d \d{4}-\d{4}$/.test(form.telefone2)) ||
+       (form.ddi2 === "+34" && !/^\d{3} \d{3} \d{3}$/.test(form.telefone2))) && {
+        telefone2: form.ddi2 === "+55" ? "Formato esperado: (00) 9 0000-0000" : "Formato esperado: 000 000 000",
       }),
   };
 
   const isValid = Object.keys(errors).length === 0;
+
+  const recs = useMemo(() => getRecommendations(form), [form]);
 
   const exportPng = async () => {
     if (!signatureRef.current) return;
@@ -226,20 +253,79 @@ export default function Home() {
                 )}
               </div>
               <div className="space-y-2">
+                <Label htmlFor="local">
+                  Local de atuação{" "}
+                  <span className="text-muted-foreground font-normal">(opcional)</span>
+                </Label>
+                <Input
+                  id="local"
+                  value={form.local}
+                  onChange={(e) => updateField("local", e.target.value)}
+                  onBlur={() => touch("local")}
+                  placeholder="Base Paragominas, Regional Centro-Oeste..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Informe o seu local de atuação (ex: Base Paragominas; Base Santarém; Regional Centro-Oeste; Regional Nordeste...) ou deixe em branco caso seu cargo seja de atuação geral na empresa (ex: Diretor; Gerente; Conselheiro; Consultor...).
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="telefone">
                   Telefone{" "}
                   <span className="text-muted-foreground font-normal">(opcional)</span>
                 </Label>
-                <Input
-                  id="telefone"
-                  value={form.telefone}
-                  onChange={(e) => updateField("telefone", e.target.value)}
-                  onBlur={() => touch("telefone")}
-                  placeholder="(91) 9 0000-0000"
-                  className={touched.telefone && errors.telefone ? "border-destructive focus-visible:ring-destructive" : ""}
-                />
+                <div className="flex gap-2">
+                  <select
+                    value={form.ddi}
+                    onChange={(e) => {
+                      const newDdi = e.target.value;
+                      setForm((prev) => ({ ...prev, ddi: newDdi, telefone: "" }));
+                    }}
+                    className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="+55">🇧🇷 +55</option>
+                    <option value="+34">🇪🇸 +34</option>
+                  </select>
+                  <Input
+                    id="telefone"
+                    value={form.telefone}
+                    onChange={(e) => updateField("telefone", e.target.value)}
+                    onBlur={() => touch("telefone")}
+                    placeholder={form.ddi === "+55" ? "(91) 9 0000-0000" : "000 000 000"}
+                    className={`flex-1 ${touched.telefone && errors.telefone ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  />
+                </div>
                 {touched.telefone && errors.telefone && (
                   <p className="text-xs text-destructive">{errors.telefone}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="telefone2">
+                  Segundo telefone{" "}
+                  <span className="text-muted-foreground font-normal">(opcional)</span>
+                </Label>
+                <div className="flex gap-2">
+                  <select
+                    value={form.ddi2}
+                    onChange={(e) => {
+                      const newDdi = e.target.value;
+                      setForm((prev) => ({ ...prev, ddi2: newDdi, telefone2: "" }));
+                    }}
+                    className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="+55">🇧🇷 +55</option>
+                    <option value="+34">🇪🇸 +34</option>
+                  </select>
+                  <Input
+                    id="telefone2"
+                    value={form.telefone2}
+                    onChange={(e) => updateField("telefone2", e.target.value)}
+                    onBlur={() => touch("telefone2")}
+                    placeholder={form.ddi2 === "+55" ? "(91) 9 0000-0000" : "000 000 000"}
+                    className={`flex-1 ${touched.telefone2 && errors.telefone2 ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                  />
+                </div>
+                {touched.telefone2 && errors.telefone2 && (
+                  <p className="text-xs text-destructive">{errors.telefone2}</p>
                 )}
               </div>
 
@@ -317,7 +403,6 @@ export default function Home() {
                     }}
                   >
                     {form.nome || "Nome completo"}
-                    {form.nome ? "," : ""}
                   </span>
                   <span
                     style={{
@@ -330,6 +415,18 @@ export default function Home() {
                     }}
                   >
                     {form.cargo || "Cargo"}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "#333333",
+                      lineHeight: 1.4,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    Elinsa do Brasil{form.local ? ` | ${form.local}` : ""}
                   </span>
                   <div style={{ height: "6px" }} />
                   <span
@@ -346,7 +443,7 @@ export default function Home() {
                       ? form.email + EMAIL_DOMAIN
                       : "alguem@grupoamperelinsa.com"}
                   </span>
-                  {form.telefone && (
+                  {(form.telefone || form.telefone2) && (
                     <span
                       style={{
                         fontSize: "13px",
@@ -357,7 +454,10 @@ export default function Home() {
                         textOverflow: "ellipsis",
                       }}
                     >
-                      {form.telefone}
+                      {[
+                        form.telefone && formatPhone(form.ddi, form.telefone),
+                        form.telefone2 && formatPhone(form.ddi2, form.telefone2),
+                      ].filter(Boolean).join(" | ")}
                     </span>
                   )}
                 </div>
@@ -365,51 +465,46 @@ export default function Home() {
             </div>
 
             {/* Recommendations */}
-            {(() => {
-              const recs = getRecommendations(form);
-              return (
-                <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      Recomendações
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {recs.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma recomendação no momento.
-                      </p>
-                    ) : (
-                      <div className="space-y-3">
-                        {recs.map((rec, i) => (
-                          <div
-                            key={i}
-                            className="flex items-start justify-between gap-4"
+            <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Recomendações
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {recs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma recomendação no momento.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {recs.map((rec, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start justify-between gap-4"
+                      >
+                        <div className="space-y-0.5 min-w-0">
+                          <p className="text-sm font-medium">{rec.label}</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">
+                            {rec.suggestion}
+                          </p>
+                        </div>
+                        {rec.suggestion !== form[rec.field] && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0 text-xs h-7 cursor-pointer"
+                            onClick={() => applyRec(rec)}
                           >
-                            <div className="space-y-0.5 min-w-0">
-                              <p className="text-sm font-medium">{rec.label}</p>
-                              <p className="text-xs text-muted-foreground font-mono truncate">
-                                {rec.suggestion}
-                              </p>
-                            </div>
-                            {rec.apply() !== form[rec.field] && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="shrink-0 text-xs h-7 cursor-pointer"
-                                onClick={() => applyRec(rec)}
-                              >
-                                Aplicar
-                              </Button>
-                            )}
-                          </div>
-                        ))}
+                            Aplicar
+                          </Button>
+                        )}
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })()}
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
