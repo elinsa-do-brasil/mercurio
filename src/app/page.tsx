@@ -61,8 +61,7 @@ function maskBR(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 11);
   let masked = "";
   if (digits.length > 0) masked += "(" + digits.slice(0, 2);
-  if (digits.length >= 2) masked += ") ";
-  if (digits.length > 2) masked += digits.slice(2, 3);
+  if (digits.length > 2) masked += ") " + digits.slice(2, 3);
   if (digits.length > 3) masked += " " + digits.slice(3, 7);
   if (digits.length > 7) masked += "-" + digits.slice(7, 11);
   return masked;
@@ -70,9 +69,8 @@ function maskBR(value: string): string {
 
 function maskES(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 9);
-  let masked = "";
-  if (digits.length > 0) masked += digits.slice(0, 3);
-  if (digits.length > 3) masked += " " + digits.slice(3, 6);
+  if (digits.length <= 3) return digits;
+  let masked = digits.slice(0, 3) + " " + digits.slice(3, 6);
   if (digits.length > 6) masked += " " + digits.slice(6, 9);
   return masked;
 }
@@ -433,11 +431,6 @@ export default function Home() {
                     Elinsa do Brasil{form.local ? ` | ${form.local}` : ""}
                   </span>
                   <div style={{ height: "6px" }} />
-                  <span style={CARD_TEXT_STYLE}>
-                    {form.email
-                      ? form.email + EMAIL_DOMAIN
-                      : "alguem@grupoamperelinsa.com"}
-                  </span>
                   {(form.telefone || form.telefone2) && (
                     <span style={CARD_TEXT_STYLE}>
                       {[
@@ -446,6 +439,11 @@ export default function Home() {
                       ].filter(Boolean).join(" | ")}
                     </span>
                   )}
+                  <span style={CARD_TEXT_STYLE}>
+                    {form.email
+                      ? form.email + EMAIL_DOMAIN
+                      : "alguem@grupoamperelinsa.com"}
+                  </span>
                 </div>
               </div>
             </div>
