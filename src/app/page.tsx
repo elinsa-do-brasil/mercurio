@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,6 +8,13 @@ import html2canvas from "html2canvas-pro";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import {
     Field,
     FieldLabel,
@@ -96,17 +103,37 @@ interface Recommendation {
     suggestion: string;
 }
 
-function getRecommendations(nome: string): Recommendation[] {
-    if (!nome) return [];
-    const abbreviated = abbreviateMiddleNames(nome);
-    if (abbreviated === nome) return [];
-    return [
-        {
-            field: "nome",
-            label: "Abreviar nomes do meio",
-            suggestion: abbreviated,
-        },
-    ];
+const CARGO_ABBREVS: Record<string, string> = {
+    sênior: "Sr.",
+    senior: "Sr.",
+    júnior: "Jr.",
+    junior: "Jr.",
+    pleno: "Pl.",
+};
+
+function abbreviateCargo(cargo: string): string {
+    return cargo
+        .split(/\s+/)
+        .map((word) => CARGO_ABBREVS[word.toLowerCase()] ?? word)
+        .join(" ");
+}
+
+function getRecommendations(nome: string, cargo: string): Recommendation[] {
+    const recs: Recommendation[] = [];
+
+    if (nome) {
+        const abbreviated = abbreviateMiddleNames(nome);
+        if (abbreviated !== nome)
+            recs.push({ field: "nome", label: "Abreviar nomes do meio", suggestion: abbreviated });
+    }
+
+    if (cargo) {
+        const abbreviated = abbreviateCargo(cargo);
+        if (abbreviated !== cargo)
+            recs.push({ field: "cargo", label: "Abreviar nível no cargo", suggestion: abbreviated });
+    }
+
+    return recs;
 }
 
 function maskBR(value: string): string {
@@ -136,6 +163,8 @@ function formatPhone(ddi: string, numero: string): string {
 }
 
 const EMAIL_DOMAIN = "@grupoamperelinsa.com";
+
+const MAX_SIGNATURE_WIDTH = 900;
 
 const CARD_TEXT = "text-xs text-[#333333] leading-normal whitespace-nowrap";
 
@@ -170,19 +199,20 @@ function PhoneField({
                             </span>
                         </FieldLabel>
                         <div className="flex gap-2">
-                            <select
+                            <Select
                                 value={ddi}
-                                onChange={(e) => {
-                                    field.onChange({
-                                        ddi: e.target.value,
-                                        numero: "",
-                                    });
-                                }}
-                                className="h-8 rounded-md border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                                onValueChange={(val) =>
+                                    field.onChange({ ddi: val, numero: "" })
+                                }
                             >
-                                <option value="+55">🇧🇷 +55</option>
-                                <option value="+34">🇪🇸 +34</option>
-                            </select>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="+55">🇧🇷 +55</SelectItem>
+                                    <SelectItem value="+34">🇪🇸 +34</SelectItem>
+                                </SelectContent>
+                            </Select>
                             <Input
                                 id={id}
                                 value={numero}
@@ -215,33 +245,90 @@ function PhoneField({
 // ---------------------------------------------------------------------------
 
 function EmailField({
-    control,
+    registration,
+    error,
 }: {
-    control: ReturnType<typeof useForm<FormValues>>["control"];
+    registration: ReturnType<ReturnType<typeof useForm<FormValues>>["register"]>;
+    error?: string;
 }) {
     return (
-        <Controller
-            control={control}
-            name="email"
-            render={({ field, fieldState }) => (
-                <Field data-invalid={!!fieldState.error}>
-                    <FieldLabel htmlFor="email">E-mail</FieldLabel>
-                    <div className="flex items-center gap-0">
-                        <Input
-                            id="email"
-                            {...field}
-                            autoComplete="off"
-                            placeholder="nome.sobrenome"
-                            className={`flex-1 rounded-r-none border-r-0 ${fieldState.error ? "border-destructive focus-visible:ring-destructive" : ""}`}
-                        />
-                        <span className="h-8 inline-flex items-center rounded-r-lg border border-l-0 border-input bg-muted/40 px-2.5 text-sm text-muted-foreground select-none whitespace-nowrap">
-                            {EMAIL_DOMAIN}
-                        </span>
-                    </div>
-                    <FieldError>{fieldState.error?.message}</FieldError>
-                </Field>
-            )}
-        />
+        <Field>
+            <FieldLabel htmlFor="email">E-mail</FieldLabel>
+            <div className="flex items-center gap-0">
+                <Input
+                    id="email"
+                    {...registration}
+                    autoComplete="off"
+                    placeholder="nome.sobrenome"
+                    aria-invalid={!!error}
+                    className="flex-1 rounded-r-none border-r-0"
+                />
+                <span className="h-9 inline-flex items-center rounded-r-lg border border-l-0 border-input bg-muted/40 px-2.5 text-base text-muted-foreground select-none whitespace-nowrap">
+                    {EMAIL_DOMAIN}
+                </span>
+            </div>
+            <FieldError>{error}</FieldError>
+        </Field>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Rich text copy block
+// ---------------------------------------------------------------------------
+
+const SOCIAL_HTML = `<span style="font-family:'Aptos',Arial,sans-serif;font-size:16px;color:#333333;">
+<b>Elinsa do Brasil:</b> <a href="https://www.instagram.com/elinsadobrasil/">Instagram</a> &bull; <a href="https://www.linkedin.com/in/elinsadobrasil/">LinkedIn</a> &bull; <a href="https://elinsa.es/">Site</a><br>
+<b>Grupo Amper:</b> <a href="https://www.linkedin.com/company/amper-sa/">LinkedIn</a> &bull; <a href="https://www.grupoamper.com/">Site</a>
+</span>`;
+
+const SOCIAL_TEXT =
+    "Elinsa do Brasil: Instagram • LinkedIn • Site\nGrupo Amper: LinkedIn • Site";
+
+function SocialCopyBlock() {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.write([
+                new ClipboardItem({
+                    "text/html": new Blob([SOCIAL_HTML], { type: "text/html" }),
+                    "text/plain": new Blob([SOCIAL_TEXT], { type: "text/plain" }),
+                }),
+            ]);
+        } catch {
+            await navigator.clipboard.writeText(SOCIAL_TEXT);
+        }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <Card className="border-border/50 bg-card/90 backdrop-blur-sm">
+            <CardHeader className="pb-2">
+                <CardTitle className="font-medium text-muted-foreground">
+                    Links sociais
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                <p className="text-foreground/80 leading-relaxed">
+                    <strong>Elinsa do Brasil:</strong>{" "}
+                    <span className="text-elinsa underline">Instagram</span> •{" "}
+                    <span className="text-elinsa underline">LinkedIn</span> •{" "}
+                    <span className="text-elinsa underline">Site</span>
+                    <br />
+                    <strong>Grupo Amper:</strong>{" "}
+                    <span className="text-elinsa underline">LinkedIn</span> •{" "}
+                    <span className="text-elinsa underline">Site</span>
+                </p>
+                <Button
+                    type="button"
+                    onClick={handleCopy}
+                    className="cursor-pointer"
+                >
+                    {copied ? "✓ Copiado!" : "Copiar links"}
+                </Button>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -256,7 +343,7 @@ export default function Home() {
         register,
         control,
         setValue,
-        formState: { isValid },
+        formState: { isValid, errors },
     } = useForm<FormValues>({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         resolver: zodResolver(formSchema as any),
@@ -274,9 +361,17 @@ export default function Home() {
     const form = useWatch({ control });
 
     const recs = useMemo(
-        () => getRecommendations(form.nome ?? ""),
-        [form.nome],
+        () => getRecommendations(form.nome ?? "", form.cargo ?? ""),
+        [form.nome, form.cargo],
     );
+
+    const [overflowing, setOverflowing] = useState(false);
+
+    useEffect(() => {
+        const el = signatureRef.current;
+        if (!el) return;
+        setOverflowing(el.scrollWidth > MAX_SIGNATURE_WIDTH);
+    }, [form.nome, form.cargo, form.local, form.telefone, form.telefone2, form.email]);
 
     const exportPng = async () => {
         if (!signatureRef.current) return;
@@ -330,7 +425,7 @@ export default function Home() {
             <div className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                     {/* Form */}
-                    <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                    <Card className="border-border/50 bg-card/90 backdrop-blur-sm">
                         <CardHeader>
                             <CardTitle className="text-base font-medium">
                                 Dados da assinatura
@@ -395,7 +490,7 @@ export default function Home() {
                                 />
 
                                 {/* E-mail */}
-                                <EmailField control={control} />
+                                <EmailField registration={register("email")} error={errors.email?.message} />
 
                                 {/* Local */}
                                 <Field>
@@ -444,6 +539,7 @@ export default function Home() {
                                 >
                                     Baixar como PNG
                                 </Button>
+
                             </FieldGroup>
                         </CardContent>
                     </Card>
@@ -458,7 +554,7 @@ export default function Home() {
                             {/* Signature — exported as PNG */}
                             <div
                                 ref={signatureRef}
-                                className="flex items-center gap-5 px-8 py-7 font-sans bg-white w-fit max-w-175 overflow-hidden rounded-lg"
+                                className="flex items-center gap-5 px-8 py-7 font-sans bg-white w-fit max-w-[900px] overflow-hidden rounded-lg"
                             >
                                 {/* eslint-disable-next-line @next/next/no-img-element -- html2canvas requires native <img> */}
                                 <img
@@ -485,7 +581,6 @@ export default function Home() {
                                         Elinsa do Brasil
                                         {form.local ? ` | ${form.local}` : ""}
                                     </span>
-                                    <div className="h-1.5" />
                                     {(tel1 || tel2) && (
                                         <span className={CARD_TEXT}>
                                             {[
@@ -505,16 +600,25 @@ export default function Home() {
                             </div>
                         </div>
 
+                        {overflowing && (
+                            <p className="text-sm text-amber-600 font-medium">
+                                O texto está ultrapassando o limite de {MAX_SIGNATURE_WIDTH}px. Tente abreviar o nome ou o cargo.
+                            </p>
+                        )}
+
+                        {/* Social links */}
+                        <SocialCopyBlock />
+
                         {/* Recommendations */}
-                        <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                        <Card className="border-border/50 bg-card/90 backdrop-blur-sm">
                             <CardHeader className="pb-3">
-                                <CardTitle className="text-sm font-medium text-muted-foreground">
+                                <CardTitle className="font-medium text-muted-foreground">
                                     Recomendações
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 {recs.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="text-muted-foreground">
                                         Nenhuma recomendação no momento.
                                     </p>
                                 ) : (
@@ -525,7 +629,7 @@ export default function Home() {
                                                 className="flex items-start justify-between gap-4"
                                             >
                                                 <div className="space-y-0.5 min-w-0">
-                                                    <p className="text-sm font-medium">
+                                                    <p className="font-medium">
                                                         {rec.label}
                                                     </p>
                                                     <p className="text-xs text-muted-foreground font-mono truncate">
