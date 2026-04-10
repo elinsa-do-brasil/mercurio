@@ -568,11 +568,11 @@ export default function Home() {
                                 <div className="w-px self-stretch bg-black rounded-[1px] shrink-0" />
 
                                 {/* Info */}
-                                <div className="flex flex-col gap-0.5 overflow-hidden min-w-0">
+                                <div className="flex flex-col gap-0.5 min-w-0">
                                     <span className="text-base font-bold text-[#111111] leading-none whitespace-nowrap overflow-hidden text-ellipsis">
                                         {form.nome || "Nome completo"}
                                     </span>
-                                    <span className="text-xs text-[#333333] leading-[1.4] whitespace-nowrap overflow-hidden text-ellipsis">
+                                    <span className="text-xs text-[#333333] leading-[1.4]">
                                         {form.cargo || "Cargo"}
                                     </span>
                                     <span
